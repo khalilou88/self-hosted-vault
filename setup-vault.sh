@@ -64,7 +64,7 @@ ui = true
 EOF
 
 cat <<EOF > .env
-VAULT_IMAGE=hashicorp/vault:1.15
+VAULT_IMAGE=hashicorp/vault:latest
 VAULT_PORT=8200
 EOF
 
