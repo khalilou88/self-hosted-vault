@@ -2,10 +2,18 @@
 
 set -e
 
-# --- Prerequisites ---
-# This script assumes you have Docker and Docker Compose installed.
-# It will also require sudo privileges for editing the /etc/hosts file and
-# for trusting the self-signed certificate.
+# --- Check for root privileges where needed ---
+if [[ $EUID -ne 0 ]]; then
+  echo "⚠️  This script requires sudo/root privileges for modifying /etc/hosts and trusting certificates."
+  echo "Please run this script with sudo or as root."
+  exit 1
+fi
+
+# --- Check for Docker Compose V2 ---
+if ! docker compose version &> /dev/null; then
+  echo "❌ Docker Compose V2 not found. Please install or upgrade Docker."
+  exit 1
+fi
 
 echo "--- HashiCorp Vault Self-Hosting Setup Script ---"
 echo "This script will:"
@@ -99,12 +107,20 @@ echo "Done."
 echo "Generating self-signed TLS certificate..."
 (
     cd certs
-    openssl genrsa -out vault.example.com.key 2048
-    openssl req -x509 -new -nodes \
+    # Modern key generation with genpkey
+    if ! openssl genpkey -algorithm RSA -out vault.example.com.key -pkeyopt rsa_keygen_bits:2048; then
+        echo "❌ OpenSSL failed to generate private key."
+        exit 1
+    fi
+
+    if ! openssl req -x509 -new -nodes \
         -key vault.example.com.key \
         -sha256 -days 365 \
         -out vault.example.com.crt \
-        -config ../vault-cert.conf
+        -config ../vault-cert.conf; then
+        echo "❌ OpenSSL failed to generate certificate."
+        exit 1
+    fi
 )
 echo "Done. Certificate and key are in the 'certs' directory."
 
@@ -122,6 +138,11 @@ fi
 echo "Setting permissions for the 'vault-data' directory..."
 sudo chown -R 1000:1000 vault-data
 echo "Done."
+
+# --- DNS Resolution Check ---
+if ! ping -c 1 vault.example.com &> /dev/null; then
+  echo "⚠️ Warning: Could not resolve 'vault.example.com'. Please check your /etc/hosts or DNS settings."
+fi
 
 # Automatically trust the certificate on Linux systems
 OS_NAME=$(uname)
